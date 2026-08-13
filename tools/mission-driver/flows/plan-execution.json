@@ -50,7 +50,7 @@
             "template": "\n\n## Closure Audit Feedback\n\nThe plan `{{PLAN_FILE}}` was not properly closed. Re-execute it based on the following feedback:\n\nScript check result: {{SCRIPT_CHECK_RESULT}}\nScript check details: {{SCRIPT_CHECK_DETAILS}}\n\nAudit findings:\n${output}" }
         }
       },
-      "onMaxRetries": { "goto": "BUILD_VERIFY" },
+      "onMaxRetries": { "done": "failed" },
       "onError": { "retry": "EXECUTE", "maxRetries": 3 }
     },
 

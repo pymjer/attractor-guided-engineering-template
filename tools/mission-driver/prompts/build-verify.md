@@ -1,72 +1,45 @@
-Verify that the build passes for mission '{{missionName}}'.
+You are the final gate for the plan at `{{PLAN_FILE}}`, mission `{{missionName}}`. You run final verification, perform semantic closure, flip mission-level state, and commit — safely.
 
-After CODE changes you MUST run typecheck, build, lint, and test (when relevant). Use the commands from the mission config.
+## Facts / where to read
 
-## Incremental build guidance (Maven / multi-module projects)
+- Mission commands: `{{typecheckCmd}}`, `{{buildCmd}}`, `{{lintCmd}}`, `{{testCmd}}` (skip any that are empty). Run from the project root.
+- `{{PLAN_FILE}}` — its Phases, Exit Criteria, `> Work Item:`, `> Source Audits:`, `> Dirty-Path Baseline:`.
+- `{{roadmapPath}}` — the roadmap/backlog to flip on success.
+- `{{commitFormat}}` — the commit message format for this project. Use it; do not invent a format.
+- `AGENTS.md` — commit style and docs-maintenance rules.
 
-The mission's `{{buildCmd}}` / `{{typecheckCmd}}` / `{{testCmd}}` already scope to the affected module via `-pl <module> -am` and deliberately omit `clean` so Maven's native incremental compilation is reused across steps (target/ is preserved). To make this safe on multi-module projects:
+## 1. Final verification
 
-0. Before building, run `git diff --name-only HEAD~1` (or compare against the last commit / the plan's working set) to confirm **which modules** actually changed. Only the listed modules need a rebuild — Maven's `-pl <module> -am` already targets them; do NOT re-add `clean` (it would wipe `target/` and force a full recompile, defeating the incremental goal). If a check unexpectedly passes without compiling anything because a prior step left a stale `target/`, only then consider an explicit `mvn clean` for that module as a one-off recovery — never as the default path.
+Run `{{typecheckCmd}}`, `{{buildCmd}}`, `{{lintCmd}}`, `{{testCmd}}` (skip empties). If any fails, diagnose the root cause.
 
-Steps:
-1. Run, from the project root:
-   - `{{typecheckCmd}}`
-   - `{{buildCmd}}`
-   - `{{lintCmd}}`
-   - `{{testCmd}}`
-   If a command is empty, skip it.
-2. If any command fails:
-   a. Diagnose the root cause (TypeScript error, ESLint violation, failed test, etc.)
-   b. Fix the issue
-   c. Re-run to confirm green
-3. If all commands pass, proceed to commit strategy below.
+## 2. Semantic closure (this is the closure gate)
 
-## Commit strategy: detect what EXECUTE already did
+Verify against the LIVE repo, not `[x]` marks:
+- Each Exit Criterion actually holds in the code (grep/glob/read).
+- Anti-hollow: new code is wired in and reachable (no empty bodies, `return null` placeholders, swallowed errors, registered-but-unreachable components).
+- No in-scope live defect or contract drift hidden in "Deferred".
 
-Before taking any action, check `git status` and `git log --oneline -5`:
+**If verification or semantic closure reveals a code problem: do NOT fix code here and declare done.** Reopen the precise Phase/gate in `{{PLAN_FILE}}` (untick the specific items, set that Phase `Status:` back), then return `fail` so the flow routes to EXECUTE. Committing a half-fixed state is forbidden.
 
-- **If the working tree is clean** (no uncommitted changes):
-  → Skip the commit step entirely. Proceed to result format.
+## 3. Flip mission-level state (only after 1 and 2 pass)
 
-- **If there are uncommitted changes AND recent commits contain Jira keys** (e.g. `<PROJ>-\d+`):
-  → EXECUTE ran in Jira mode and already committed per-item. The remaining uncommitted changes are from non-Jira items (Decision/Proof items) or plan edits. Commit them now as a single batch:
-     `feat({{missionName}}): plan-{timestamp} remaining items and plan updates`
-  → This is a FALLBACK — normally EXECUTE commits per-item, so this should be minimal.
+- Set `> Plan Status: completed` and add real `## Closure` evidence (commands run + what was verified; no `*(pending)*`).
+- Read the plan's `> Work Item:` and flip that item ❌ → ✅ in `{{roadmapPath}}` (or the referenced doc).
+- If the plan has `> Source Audits:`, set each listed audit `> Audit Status: planned` → `closed` (idempotent; skip already-closed). Omit if there is no such line.
 
-- **If there are uncommitted changes AND no Jira keys in recent commits**:
-  → EXECUTE ran in batch mode (original behavior). Commit everything now with the original code+doc split:
-    a. Derive commit metadata from the run context:
-        - `YYYY-MM-DD-HHmm` = date+minute parsed from `{{PLAN_FILE}}` basename (the first 15 characters: `YYYY-MM-DD-HHmm`, before the `-N-` sequence segment)
-        - `scope` = mission name (e.g. `{{missionName}}`)
-    b. Split changes into logical commits following the project's `AGENTS.md` commit style (read the **Commit Message Style** section **completely**; imperative mood: "Add feature" not "Added feature"; reference doc paths when relevant):
-       - **Code commit** (implementation + tests, never separated):
-         ```
-         feat(<scope>): plan-{YYYY-MM-DD-HHmm} {short title from plan header}
+## 4. Commit — only what this plan owns
 
-         - Deliverable 1
-         - Deliverable 2
-         - Deliverable 3 (typical 3-5 items, extract from plan deliverables)
+- Determine the plan's own changed files. **Exclude** anything listed in `> Dirty-Path Baseline:`.
+- If a file you would commit overlaps the Dirty-Path Baseline (a pre-existing user change on the same path), do NOT mix it in: leave it uncommitted, and return `fail` with the conflict noted so a human resolves it.
+- Commit the plan-owned changes using `{{commitFormat}}`. If full-green (all relevant commands passed), note `full-green verification` in the message and record it in `docs/logs/{year}/{month}-{day}.md` per AGENTS.md.
+- Never bypass hooks (`--no-verify`) or force. If a commit fails, auto-fix the root cause (lint/format/staging) and retry up to 2 times; if still failing, leave the tree intact and return `fail`.
 
-         Plan: {{plansDir}}/{YYYY-MM-DD-HHmm}-...md
-         ```
-         (Match the surrounding `git log` tone — keep consistent with the repo's commit style.)
-       - **Doc commit** (plan file + architecture docs + roadmap + daily log):
-         ```
-         docs(<scope>): plan-{YYYY-MM-DD-HHmm} docs/log/roadmap update
+## Output protocol
 
-         - Update docs/architecture/...md (§X ✅)
-         - Update {{roadmapPath}} (§Y ✅)
-         - Update docs/logs/{YYYY}/{MM-DD}.md (plan-{YYYY-MM-DD-HHmm} entry)
+Your output MUST end with exactly one `<AI_STEP_RESULT>` marker (the only parsed marker), as the last line:
+- `pass` = verified, closed, committed cleanly.
+- `fail` = verification/closure found a problem (plan reopened) or a commit/dirty-path conflict was preserved for follow-up.
 
-         Plan: {{plansDir}}/{YYYY-MM-DD-HHmm}-...md
-         ```
-       - If code changes span multiple packages, emit multiple feat commits (split by package).
-    c. **Failure handling** — if any `git commit` fails (pre-commit/Husky hook rejection, message format issue, staging problem):
-       - Try to auto-fix the root cause and retry (e.g. fix lint/import-order/format issues, re-stage missing files). Up to 2 retries.
-       - Never bypass hooks (`--no-verify`) or force anything (`--force`, reset shared refs).
-       - If auto-fix fails after retries, leave the working tree as-is (preserve work) and emit `<AI_STEP_RESULT>fail</AI_STEP_RESULT>` with the failure reason so the next run can pick up the uncommitted work.
-    d. After all commits succeed, run `git log --oneline -5` to confirm the history
-
-If this run achieved a full-green state (unit tests + e2e both passed completely), follow AGENTS.md: record it in `docs/logs/{year}/{month}-{day}.md`, mention `full-green verification` in the commit message, then commit.
-
-Your output MUST end with exactly one `<AI_STEP_RESULT>pass</AI_STEP_RESULT>` or `<AI_STEP_RESULT>fail</AI_STEP_RESULT>` marker. This is the only marker that is parsed; a missing or malformed marker triggers an additional correction run, so emit it exactly as shown.
+```
+<AI_STEP_RESULT>pass</AI_STEP_RESULT>
+```

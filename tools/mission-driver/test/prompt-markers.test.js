@@ -47,13 +47,25 @@ describe("prompt-check — result-tag lint (§1.4-0, §11.8)", () => {
     assert.deepEqual(errors, []);
   });
 
-  it("does NOT enforce value membership for forEach steps (e.g. plan-review approved)", () => {
+  it("enforces forEach value membership against the transition∪alias union (D1): approved is valid via alias", () => {
+    // Realistic markers include the approved→all_complete alias, so the per-item
+    // `approved` marker resolves inside the union and is accepted.
     const errors = lintPrompt(
       "plan-review.md",
       "<AI_STEP_RESULT>approved</AI_STEP_RESULT>",
-      { markers: new Set(["all_complete", "some_failed", "all_failed"]), forEach: true },
+      { markers: new Set(["all_complete", "some_failed", "all_failed", "approved"]), forEach: true },
     );
     assert.deepEqual(errors, []);
+  });
+
+  it("flags a forEach marker value that is outside the transition∪alias union (D1)", () => {
+    const errors = lintPrompt(
+      "plan-review.md",
+      "<AI_STEP_RESULT>banana</AI_STEP_RESULT>",
+      { markers: new Set(["all_complete", "some_failed", "all_failed", "approved"]), forEach: true },
+    );
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /not a valid transition\/alias/);
   });
 
   it("maps prompts to their flow steps (draft-from-roadmap → created/nothing)", () => {

@@ -63,7 +63,8 @@
       "onUnknownMaxRetries": 2,
       "transitions": {
         "created": { "goto": "REVIEW_PLANS" },
-        "nothing": { "goto": "DEEP_AUDIT" }
+        "nothing": { "goto": "DEEP_AUDIT" },
+        "fail": { "done": "failed" }
       },
       "onError": { "retry": "DRAFT_PLANS", "maxRetries": 3 },
       "onUnknown": { "goto": "DEEP_AUDIT" },

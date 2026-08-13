@@ -228,6 +228,14 @@ async function closureScriptCheck(delegates, flowVars) {
     }
     return { marker: "fail", text: `Plan closure check FAILED.\n  file: ${result.file}\n  status: ${result.planStatus}\n${detailsText}` };
   } catch (err) {
+    // Honesty + no-residual-template-var: on exception the downstream
+    // closure-audit prompt still interpolates {{SCRIPT_CHECK_RESULT}} /
+    // {{SCRIPT_CHECK_DETAILS}}. Set them here so the audit sees a real FAIL
+    // signal instead of an unresolved placeholder.
+    if (flowVars?.set) {
+      flowVars.set("SCRIPT_CHECK_RESULT", "FAIL");
+      flowVars.set("SCRIPT_CHECK_DETAILS", `closure script check error: ${err.message}`);
+    }
     return { marker: "fail", text: `ERROR: ${err.message}` };
   }
 }

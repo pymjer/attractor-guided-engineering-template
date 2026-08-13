@@ -15,6 +15,9 @@ Read `{{planGuide}}` **completely**. It defines the plan format, required sectio
 2. **Completeness**: Exit Criteria are clear and testable. Execution Plan covers all checklist items.
 3. **Scope**: Work item boundaries are clear. No ambiguous "and also..." scope creep.
 4. **Closure evidence**: Plan defines what evidence proves completion.
+5. **Roadmap 1:1 (roadmap-sourced plans only)**: If the plan has a `> Work Item:` line (roadmap-sourced), it MUST map to exactly ONE roadmap item. A plan bundling multiple roadmap items is a Blocker — split it (one plan per item), or if the items truly share one closure surface, Review Hold and flag that the roadmap items should be merged. Plans WITHOUT a `> Work Item:` line are audit-sourced (they carry `> Source Audits:`) and are exempt from 1:1.
+
+> This step is the mandatory independent review gate: draft prompts no longer promote plans themselves. Every `draft` plan reaches you, and only you flip `draft` → `active`.
 
 ## Action
 

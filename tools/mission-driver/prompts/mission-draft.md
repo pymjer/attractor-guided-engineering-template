@@ -20,9 +20,10 @@ When `{{flowHint}}` is non-empty, set the mission.json `flowName` to `{{flowHint
 
 Scan the project to determine correct values. Generate the file at `{{missionsDir}}/{mission-name}.json` and return results in the following format:
 ```
-<AI_STEP_RESULT>created</AI_STEP_RESULT>
 <MISSION_FILE>{{missionsDir}}/{mission-name}.json</MISSION_FILE>
 ```
+
+`<MISSION_FILE>` is the only tag the driver parses for this step (it derives missionName/roadmapPath/missionFile from it). Do not emit an `AI_STEP_RESULT` marker here — it is not consumed and only adds noise.
 
 The mission.json MUST follow this format:
 ```json

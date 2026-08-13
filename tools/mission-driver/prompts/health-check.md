@@ -35,4 +35,8 @@ Notes:
 - `needs_fix` triggers a retry of CHECK (up to 2 times); `fail` is terminal.
 - The authoritative build health gate is BUILD_VERIFY; CHECK runs `{{checkCmd}}`, not `commands.test`.
 
-Your output MUST end with exactly one `<AI_STEP_RESULT>` marker: `pass`, `needs_fix`, or `fail`.
+Your output MUST end with exactly one `<AI_STEP_RESULT>` marker (the only parsed marker), as the last line — one of `pass`, `needs_fix`, or `fail`:
+
+```
+<AI_STEP_RESULT>pass</AI_STEP_RESULT>
+```

@@ -92,7 +92,8 @@ Use EXACTLY this structure:
     - **Fix:** target file → concrete minimal change.
 
     ## 3. What worked
-    2–5 bullets of things that went right and MUST be preserved (so fixes don't regress them).
+    Things that went right and MUST be preserved (so fixes don't regress them).
+    Include what genuinely applies; do not pad to hit a count.
 
     ## 4. Prioritized action list
     A checkbox list, SEV1 first, each mapped to a target file:
@@ -136,11 +137,9 @@ For EACH relevant store, follow this consolidate-don't-accumulate protocol:
 
 ## Return format (last lines of your response, machine-parsed)
 
-    <AI_STEP_RESULT>created</AI_STEP_RESULT>
+Only `<POSTMORTEM_FILE>` and `<MEMORY_UPDATED>` are parsed. Emit exactly:
+
     <POSTMORTEM_FILE>{path you wrote}</POSTMORTEM_FILE>
     <MEMORY_UPDATED>{self: N added/M updated; module: N added/M updated or "skipped"}</MEMORY_UPDATED>
 
-If you cannot analyze (no run-state.json AND no events.jsonl), instead return:
-
-    <AI_STEP_RESULT>failed</AI_STEP_RESULT>
-    and one sentence explaining why.
+If you cannot analyze (no run-state.json AND no events.jsonl), do NOT emit a `<POSTMORTEM_FILE>` tag; write one sentence explaining why. The caller detects the failure from the absent `<POSTMORTEM_FILE>`.

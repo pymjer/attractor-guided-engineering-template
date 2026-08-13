@@ -28,7 +28,8 @@
       "onUnknownMaxRetries": 2,
       "transitions": {
         "created": { "done": "completed" },
-        "nothing": { "goto": "MULTI_AUDIT" }
+        "nothing": { "goto": "MULTI_AUDIT" },
+        "fail": { "done": "failed" }
       },
       "onError": { "goto": "MULTI_AUDIT" }
     },
@@ -41,7 +42,8 @@
       "onUnknownMaxRetries": 2,
       "transitions": {
         "clean": { "goto": "OPEN_AUDIT" },
-        "issues": { "goto": "OPEN_AUDIT" }
+        "issues": { "goto": "OPEN_AUDIT" },
+        "fail": { "done": "failed" }
       },
       "onError": { "goto": "OPEN_AUDIT" }
     },
@@ -54,7 +56,8 @@
       "onUnknownMaxRetries": 2,
       "transitions": {
         "clean": { "goto": "SCAN_NEW_RESULTS" },
-        "issues": { "goto": "SCAN_NEW_RESULTS" }
+        "issues": { "goto": "SCAN_NEW_RESULTS" },
+        "fail": { "done": "failed" }
       },
       "onError": { "goto": "SCAN_NEW_RESULTS" }
     },
@@ -67,7 +70,8 @@
       "onUnknownMaxRetries": 2,
       "transitions": {
         "created": { "done": "completed" },
-        "nothing": { "done": "completed" }
+        "nothing": { "done": "completed" },
+        "fail": { "done": "failed" }
       },
       "onError": { "done": "completed" }
     }

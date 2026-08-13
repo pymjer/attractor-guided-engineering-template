@@ -142,6 +142,11 @@ const TRANSIENT_PROVIDER_SIGS = [
   /\bquota\b/i,
   /\boverloaded\b/i,
   /\bservice unavailable\b/i,
+  // Upstream 500-class provider errors (e.g. ZhipuAI "UnknownError / Unexpected
+  // server error"). These are server-side and retryable, so they belong on the
+  // transient budget, not the terminal failure path.
+  /\bunexpected server error\b/i,
+  /"name":\s*"UnknownError"/i,
 ];
 
 /**
@@ -262,6 +267,72 @@ export class FlowEngine {
       backoffBaseMs: Number.isFinite(t.backoffBaseMs) ? t.backoffBaseMs : 5_000,
       backoffCapMs: Number.isFinite(t.backoffCapMs) ? t.backoffCapMs : 120_000,
     };
+  }
+
+  // Unified transient-provider retry. Classifies a step result via the stderr
+  // signature (a genuine extracted marker is NEVER transient) and, on a
+  // transient signature, schedules an independent-budget retry — it does NOT
+  // consume onError.maxRetries, does NOT emit step_failed (emits
+  // transient_retry), and does NOT trip maxCycleVisits. Returns true when a
+  // retry was scheduled (caller MUST `continue`) so the next loop iteration
+  // re-runs the same step; returns false when the failure is not transient or
+  // the transient budget is exhausted (caller proceeds to normal step_failed /
+  // onError / onUnknown handling).
+  //
+  // Called from BOTH the !result.ok path AND the null-marker path: a mid-run
+  // provider 500 can leave ok=true with partial output and no marker (the CLI
+  // exits 0 after logging the error to stderr), which previously routed to the
+  // null-marker path and terminated the step on the first attempt with zero
+  // retries.
+  async _tryTransientProviderRetry(currentStep, result, visits) {
+    if (result.marker) return false; // a real business marker is never transient
+    const stepDurMs = this._wfCurrent ? Date.now() - this._wfCurrent.startedAt : null;
+    const transientSig = isTransientProviderError({
+      exitCode: result.exitCode,
+      stderrTail: result.stderrTail || result.errorTail,
+      stepDurMs,
+      logLen: result.text ? result.text.length : 0,
+    });
+    if (!transientSig) return false;
+    const tCfg = this._transientConfig();
+    if (!tCfg.enabled) return false;
+    const tCount = (this.transientCounts.get(currentStep) || 0) + 1;
+    this.transientCounts.set(currentStep, tCount);
+    if (tCount > tCfg.maxRetries) {
+      this._log(`  ⚡ transient retry budget exhausted for ${currentStep} (${tCfg.maxRetries}) → degrading to real failure`);
+      return false;
+    }
+    this._log(`  ⚡ transient provider error (${transientSig}) — independent retry ${tCount}/${tCfg.maxRetries} for ${currentStep} (does not consume onError budget)`);
+    // Close this attempt as a transient (non-terminal) record so the timeline
+    // shows it; the retry below reopens the step.
+    this._wfClose(result.marker || "transient", "transient_retry", result.sessionId, { transientSig, error: result.stderrTail || result.errorTail || null });
+    this._emitEvent("transient_retry", {
+      step: currentStep,
+      visit: visits,
+      signature: transientSig,
+      attempt: tCount,
+      max: tCfg.maxRetries,
+      durationMs: stepDurMs,
+    });
+    // Exponential backoff: base * 2^(attempt-1), hard-capped.
+    const backoffMs = Math.min(
+      tCfg.backoffBaseMs * 2 ** (tCount - 1),
+      tCfg.backoffCapMs,
+    );
+    this._log(`  ⏳ transient backoff ${Math.round(backoffMs / 1000)}s (exponential, cap ${Math.round(tCfg.backoffCapMs / 1000)}s)`);
+    this._emitEvent("backoff", {
+      step: currentStep,
+      retryStep: currentStep,
+      durationMs: backoffMs,
+      reason: "transient_provider_retry",
+    });
+    await sleep(backoffMs);
+    // Roll back this iteration's visit increment so transient retries are
+    // invisible to maxCycleVisits. Ping-pong is structurally impossible for
+    // same-step retries, so no ping-pong exemption is required. The next loop
+    // iteration re-runs the SAME step via normal dispatch.
+    this.visitCounts.set(currentStep, visits - 1);
+    return true;
   }
 
   /** Write a script step's output to an oc-*.log file in runDir so it shows up
@@ -1722,49 +1793,7 @@ export class FlowEngine {
          // falls through to step_failed + onError below.
          // (memory L003, count=3: onError carried the tightest budget for the
          // faults that most needed retrying.)
-         if (transientSig) {
-           const tCfg = this._transientConfig();
-           if (tCfg.enabled) {
-             const tCount = (this.transientCounts.get(currentStep) || 0) + 1;
-             this.transientCounts.set(currentStep, tCount);
-             if (tCount <= tCfg.maxRetries) {
-               this._log(`  ⚡ transient provider error (${transientSig}) — independent retry ${tCount}/${tCfg.maxRetries} for ${currentStep} (does not consume onError budget)`);
-               // Close this attempt as a transient (non-terminal) record so the
-               // timeline shows it; the retry below reopens the step.
-               this._wfClose(result.marker || "transient", "transient_retry", result.sessionId, { transientSig, error: failedMeta.error });
-               this._emitEvent("transient_retry", {
-                 step: currentStep,
-                 visit: visits,
-                 signature: transientSig,
-                 attempt: tCount,
-                 max: tCfg.maxRetries,
-                 durationMs: stepDurMs,
-               });
-               // Exponential backoff: base * 2^(attempt-1), hard-capped.
-               const backoffMs = Math.min(
-                 tCfg.backoffBaseMs * 2 ** (tCount - 1),
-                 tCfg.backoffCapMs,
-               );
-               this._log(`  ⏳ transient backoff ${Math.round(backoffMs / 1000)}s (exponential, cap ${Math.round(tCfg.backoffCapMs / 1000)}s)`);
-               this._emitEvent("backoff", {
-                 step: currentStep,
-                 retryStep: currentStep,
-                 durationMs: backoffMs,
-                 reason: "transient_provider_retry",
-               });
-               await sleep(backoffMs);
-               // Roll back this iteration's visit increment so transient retries
-               // are invisible to maxCycleVisits. Ping-pong is structurally
-               // impossible for same-step retries (detection needs 2 distinct
-               // alternating steps), so no ping-pong exemption is required. The
-               // next loop iteration re-runs the SAME step via normal dispatch.
-               this.visitCounts.set(currentStep, visits - 1);
-               continue;
-             }
-             // Transient budget exhausted → degrade to a real failure below.
-             this._log(`  ⚡ transient retry budget exhausted for ${currentStep} (${tCfg.maxRetries}) → degrading to real failure`);
-           }
-         }
+          if (await this._tryTransientProviderRetry(currentStep, result, visits)) continue;
          const failedRec = this._wfClose(result.marker || "fail", "failed", result.sessionId, failedMeta);
         if (failedRec) {
           this._emitEvent("step_failed", {
@@ -1868,6 +1897,11 @@ export class FlowEngine {
       }
       if (!marker) {
         this._log(`  marker not found in output`);
+        // A null marker with a provider-error stderr signature is a transient
+        // crash: the CLI can exit 0 after logging a 500, yielding ok=true +
+        // partial output + no marker. Retry it on the transient budget (with
+        // backoff) before degrading to failure, mirroring the !result.ok path.
+        if (await this._tryTransientProviderRetry(currentStep, result, visits)) continue;
         // Observability (§6): even on a null-marker failure, persist logFile +
         // sessionId + a raw tail so the run is traceable back to the exact log
         // (previously this path returned without recording either).

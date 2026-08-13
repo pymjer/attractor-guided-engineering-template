@@ -1,50 +1,57 @@
-Draft 1-3 plans from the remaining roadmap items, also considering deferred items recorded in previous plans. Do NOT try to cover all remaining roadmap items — pick the next 1-3 plans' worth of work.
+You draft execution plans from the mission roadmap. You do NOT decide mission completion, and you do NOT promote plans to `active` — an independent `REVIEW_PLANS` step reviews every draft.
 
-## Context
+## Task
 
-Before drafting, read these context files so you understand the project's conventions and the target module's architecture instead of exploring the codebase ad-hoc:
+Pick the next 1-3 roadmap items worth planning now and write ONE plan per item. Do not try to cover all remaining items.
 
-- `{{contextDir}}/project-context.md` — project-wide conventions, build commands, and module map.
-- `{{moduleContextFile}}` — the target module's own CONTEXT.md (its architecture, key files, and recent changes). If the path ends with "(不存在)", the module has no dedicated context file — skip it.
+## Facts / where to read
 
-Read `{{planGuide}}` **completely**. It defines the plan format, status lifecycle, and review rules.
+- `{{contextDir}}/project-context.md` — project conventions, build commands, module map.
+- `{{moduleContextFile}}` — target module CONTEXT.md (architecture, key files). If the path ends with "(不存在)", the module has no dedicated context file — skip it.
+- `{{roadmapPath}}` — the roadmap; remaining items and any deferred items from previous plans are the drafting source.
+- `{{planGuide}}` — plan format, status lifecycle, review rules. Read it before writing.
 
 ## Workflow
 
-1. **Read & bundle**: Read `{{roadmapPath}}` **completely**, then pick the next 1-3 plans' worth of work from remaining items, also considering deferred items from previous plans. Do not cover all remaining items.
-
-2. **Order plans**: When drafting multiple plans, assign them an explicit execution order. Plans that unblock others come first.
-
-3. **Create drafts**: For each plan, save at `{{plansDir}}/{YYYY-MM-DD-HHmm}-{N}-{slug}.md` where `{N}` is a single-digit sequence number (1, 2, 3...) reflecting the intended execution order. Same-timestamp plans sorted alphabetically by filename determine execution order — the `{N}` prefix ensures this.
+1. Read `{{roadmapPath}}`. Select the next 1-3 remaining roadmap items (also consider re-triggerable deferred items).
+2. **One roadmap item ↔ one plan (1:1).** Draft exactly one plan per selected item. Do NOT bundle multiple roadmap items into one plan. If a single item is large, split it into multiple Phases *inside the same plan* — not into multiple plans.
+3. Order the plans: assign a single-digit sequence `{N}` (1, 2, 3…) reflecting execution order; plans that unblock others come first. Same-timestamp plans sort alphabetically by filename, so the `{N}` prefix fixes the order.
+4. Save each plan at `{{plansDir}}/{YYYY-MM-DD-HHmm}-{N}-{slug}.md` with front matter:
    ```
    > Plan Status: draft
    > Mission: {{missionName}}
-   > Work Item: <label>
+   > Work Item: <the single roadmap item label this plan closes>
    ```
+5. **Self-check only — do NOT spawn a reviewer and do NOT set `active`.** Verify each plan is format-valid and self-consistent, then leave it at `> Plan Status: draft`. The independent `REVIEW_PLANS` step performs the mandatory independent review and promotes to `active`.
 
-4. **Review before active**: For each drafted plan, follow the `Plan Review Rule` in `{{planGuide}}` — use an independent sub-agent (fresh session) to review repeatedly until consensus. **Only change `> Plan Status: draft` to `> Plan Status: active` after consensus is reached**; otherwise leave it `draft`.
+## Mission completion
 
-## Mission Completion Decision
+You do not decide whether the mission is complete — the engine decides from the audit round count. Plan-level closure audits under `docs/audits/` are NOT mission-level audits; do not read them as deep-audit evidence.
 
-Do not decide whether the mission is complete. Whether the mission is complete is decided by the engine based on the audit round count, not by you. You only answer one question per run: "is there a plan worth drafting right now?"
+## Stop conditions → honest `fail`
 
-In particular: `docs/audits/` may contain plan-level closure audit artifacts produced by the `plan-execution` subflow. Those are NOT mission-level audits and you MUST NOT read them as evidence that deep audit has run. The engine decides based on the audit round count whether to enter another deep-audit round or to complete the mission; you cannot influence that decision from this step.
+Emit `fail` (terminate this flow, do not fake `nothing`) when: the roadmap is unreadable or self-contradictory in a way you must not guess through, or you cannot map the selected work to a single roadmap item without inventing scope.
 
-## Result Markers
+## Output protocol
 
-If there is no plan to draft this round (the roadmap's current todo items are empty and no deferred item is re-triggerable), return:
+Auxiliary data first, the single result marker last.
+
+If there is no plan to draft this round (no remaining/ re-triggerable item):
 ```
 <AI_STEP_RESULT>nothing</AI_STEP_RESULT>
 ```
 
-When plans are created, return results in the following format:
+When plans are created (provide only the first, lowest-`N`, plan path; the engine discovers the rest by scan; all plan files must exist on disk):
 ```
-<AI_STEP_RESULT>created</AI_STEP_RESULT>
 <FLOW_VARS>
   <PLAN_FILE>{{plansDir}}/{YYYY-MM-DD-HHmm}-{N}-{slug}.md</PLAN_FILE>
 </FLOW_VARS>
+<AI_STEP_RESULT>created</AI_STEP_RESULT>
 ```
 
-In PLAN_FILE, provide only the first (lowest N) plan path. The engine discovers the rest via scan. All plan files must exist on disk — placeholder paths are rejected.
+If you must stop honestly:
+```
+<AI_STEP_RESULT>fail</AI_STEP_RESULT>
+```
 
-Your output MUST end with exactly one `<AI_STEP_RESULT>` marker — either `nothing` or `created`, with the `<FLOW_VARS>` block only when `created`. This is the only marker that is parsed; a missing or malformed marker triggers an additional correction run, so emit it exactly as shown. Do not emit any other marker value.
+Your output MUST end with exactly one `<AI_STEP_RESULT>` marker whose value is `created`, `nothing`, or `fail`. It is the only parsed marker; emit it exactly as shown, as the last line.

@@ -1,25 +1,43 @@
-Execute the plan at {{PLAN_FILE}}. Complete **the entire plan**.
+Execute the plan at `{{PLAN_FILE}}`. Complete the plan's implementation work. You own code + the plan's own phase checkboxes — you do NOT own mission-level state flips.
 
-Steps:
-1. Read the plan file at {{PLAN_FILE}} **completely**.
-2. Determine which Phases still need work. A Phase is unfinished if it contains ANY `- [ ]` item. Do NOT rely on the `Status:` line alone — a Phase marked `Status: completed` that still has `[ ]` items is INCONSISTENT (a prior run set the status but did not finish the work, or forgot to tick the items). Treat it as unfinished and execute it. Execute every unfinished Phase, in order.
-3. After completing each Phase:
-   a. Run `{{testCmd}}` to confirm tests pass. If the change is cross-module, also run `{{typecheckCmd}}` (whole workspace) to catch downstream breakage.
-   b. Tick every `[ ]` item in that Phase to `[x]` AND set its `Status:` to `completed`. Both must happen together — a status-only or items-only update leaves the plan inconsistent and will re-trigger this Phase on the next run (causing the EXECUTE ↔ CLOSURE_VERIFY loop).
-4. After all Phases are complete:
-   a. Update the plan's `Plan Status` to `completed`
-   b. Read the work item from the plan (its `> Work Item:` label) and update the relevant roadmap/backlog file (e.g. `{{roadmapPath}}` or the referenced architecture doc): change the work item from ❌ to ✅
-   c. **Close source audits**: If the plan front matter has `> Source Audits:`, for each listed audit file change `> Audit Status: planned` to `> Audit Status: closed`. Skip files already `closed` (idempotent) and omit the step entirely if there is no `> Source Audits:` line (roadmap-sourced plan). Do NOT reopen or re-verify here — if a fix turns out insufficient, the next audit round's `OPEN_AUDIT` will re-discover it as a fresh `open` finding.
+## Facts / where to read
 
-If execution is interrupted or fails, that is fine — the plan records its own progress ([x]/[ ]), so the next run resumes from the breakpoint.
-Do not skip steps — execute every unfinished Phase completely.
+- `{{PLAN_FILE}}` — the plan; its Phases and `- [ ]` items are your worklist. Read it completely.
+- `AGENTS.md` — component contract, code conventions, build-artifact rules. Follow it.
+- Per phase, read only the owner source and focused proof that phase needs — do not pre-read the whole codebase.
 
-Notes:
-- Honor `AGENTS.md`: read it **completely** and follow the project's component contract, code conventions, and build artifact rules.
-- After code changes, run `{{typecheckCmd}} && {{buildCmd}} && {{lintCmd}}` before declaring a Phase done.
+## Dirty-path baseline (record once, before editing)
 
----
+Run `git status --porcelain`. Any file already modified/untracked **before** you start and NOT part of this plan's target set is a pre-existing dirty path. Record them in the plan front matter as:
+```
+> Dirty-Path Baseline: <comma-separated paths, or "none">
+```
+This lets BUILD_VERIFY avoid committing changes this plan does not own.
 
-## Output marker (both modes)
+## Workflow
 
-Your output MUST end with exactly one `<AI_STEP_RESULT>pass</AI_STEP_RESULT>` or `<AI_STEP_RESULT>fail</AI_STEP_RESULT>` marker (`pass` = all phases executed and green; `fail` = execution blocked or tests red). 
+1. Determine unfinished Phases. A Phase is unfinished if it has ANY `- [ ]` item. Do NOT trust the `Status:` line alone — a `Status: completed` phase that still has `[ ]` items is inconsistent; treat it as unfinished and finish it. Execute every unfinished Phase, in order.
+2. After each Phase: run `{{testCmd}}` (and `{{typecheckCmd}}` if the change is cross-module) to confirm green.
+3. Tick every `[ ]` → `[x]` in that Phase AND set its `Status: completed` together. A status-only or items-only update leaves the plan inconsistent and re-triggers this step.
+4. After code changes run `{{typecheckCmd}}`, `{{buildCmd}}`, `{{lintCmd}}` before declaring a Phase done.
+
+## What you must NOT do (state ownership)
+
+- Do NOT set the plan's top-level `Plan Status` to `completed`.
+- Do NOT flip roadmap/backlog items from ❌ to ✅.
+- Do NOT close `> Source Audits:`.
+- Do NOT claim closure.
+
+Those mission-level flips belong to the final gate (BUILD_VERIFY), after closure passes. Your job is to make the work real and mark the plan's own phase checkboxes.
+
+If execution is interrupted, that is fine — the plan records its own `[x]`/`[ ]` progress and the next run resumes from there.
+
+## Output protocol
+
+Your output MUST end with exactly one `<AI_STEP_RESULT>` marker (the only parsed marker), as the last line:
+- `pass` = all phases executed and green.
+- `fail` = execution blocked or tests red.
+
+```
+<AI_STEP_RESULT>pass</AI_STEP_RESULT>
+```

@@ -35,6 +35,15 @@ describe("isTransientProviderError — stderr-signature classification (mdr-1 Ph
     assert.ok(isTransientProviderError({ stderrTail: "service unavailable" }));
   });
 
+  it("upstream 500 signatures (Unexpected server error / UnknownError) → transient", () => {
+    // Reproduces the 2026-08-08 cardlite failure stderr.
+    assert.ok(isTransientProviderError({
+      stderrTail: 'Error: {"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_2d9f4ac6"}}',
+    }));
+    assert.ok(isTransientProviderError({ stderrTail: "Unexpected server error" }));
+    assert.ok(isTransientProviderError({ stderrTail: '"name":"UnknownError"' }));
+  });
+
   it("normal failure (stderr without a signature) → null", () => {
     assert.equal(
       isTransientProviderError({ exitCode: 1, stderrTail: "SyntaxError: unexpected token", logLen: 500 }),
@@ -185,6 +194,54 @@ describe("FlowEngine — transient retry independence (mdr-1 Phase 3)", () => {
       const events = readEvents(runDir);
       assert.equal(events.filter((e) => e.type === "transient_retry").length, 2, "exactly maxRetries transient_retry events before degradation");
       assert.ok(events.filter((e) => e.type === "step_failed").length >= 1, "step_failed MUST be emitted once transient budget is exhausted");
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+
+  it("(d) null-marker transient (ok:true + partial output + provider 500 in stderr) retries on the transient budget, NOT the terminal null-marker path", async () => {
+    // Reproduces the 2026-08-08 cardlite EXECUTE failure: the CLI exited 0
+    // after logging an upstream 500, so ok=true + partial output + NO marker +
+    // the provider error only in stderr. Before the fix this routed to the
+    // null-marker path and failed the step on the first attempt with ZERO
+    // retries, killing a 15h mission on a 2-min API hiccup.
+    const runDir = mkdtempSync(join(tmpdir(), "md-trans-d-"));
+    try {
+      const nullMarker500 = () => ({
+        ok: true,
+        text: "I'll start by reading the plan.\nLet me read the rest of the plan.",
+        exitCode: 0,
+        stderrTail: 'Error: {"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_2d9f4ac6"}}',
+      });
+      let calls = 0;
+      const delegates = makeMockDelegates({
+        config: {
+          moduleName: "test-mod", shortName: "test-mod", packageFilter: "x",
+          projectRoot: runDir, runDir, missionName: "t",
+          transient: { enabled: true, maxRetries: 3, backoffBaseMs: 1, backoffCapMs: 2 },
+        },
+        responses: {
+          START: () => { calls++; return calls <= 2 ? nullMarker500() : { text: "<AI_STEP_RESULT>pass</AI_STEP_RESULT>", ok: true }; },
+        },
+      });
+      const flow = simpleFlow({
+        START: {
+          type: "agent", prompt: "go", resultTag: "AI_STEP_RESULT",
+          // Tight onError budget (1): if transient retries leaked into it, the
+          // 2nd failure would force failure. They must NOT consume it.
+          onError: { retry: "START", maxRetries: 1 },
+          transitions: { pass: { done: "completed" } },
+        },
+      });
+      const engine = new FlowEngine(flow, delegates);
+      const res = await engine.run();
+
+      assert.equal(res.status, "completed", "must recover via transient retry from the null-marker 500 path");
+      const events = readEvents(runDir);
+      assert.equal(events.filter((e) => e.type === "transient_retry").length, 2, "two transient_retry events from the null-marker path");
+      assert.equal(events.filter((e) => e.type === "step_failed").length, 0, "step_failed must NOT be emitted while the transient budget holds");
+      assert.equal(engine.retryCounts.get("START→START") || 0, 0, "onError.maxRetries must NOT be consumed by null-marker transient retries");
+      assert.equal(engine.visitCounts.get("START"), 1, "transient retries must be invisible to maxCycleVisits");
     } finally {
       rmSync(runDir, { recursive: true, force: true });
     }
