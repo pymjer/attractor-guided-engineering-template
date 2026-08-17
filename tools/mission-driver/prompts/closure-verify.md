@@ -6,7 +6,7 @@ You are the independent closure verifier for the plan at `{{PLAN_FILE}}`, missio
 - `{{planGuide}}` — plan format and closure rules. Read it before judging.
 - Mission commands: `{{typecheckCmd}}`, `{{buildCmd}}`, `{{lintCmd}}`, `{{testCmd}}` (skip any that are empty). Run from the project root.
 - `{{roadmapPath}}` — the roadmap/backlog to flip on success.
-- `{{commitFormat}}` — the commit message format for this project. Use it; do not invent a format.
+- `{{commitFormat}}` — the commit message PATTERN for this project (placeholders to substitute, not literal text). Follow its shape; do not invent a different format.
 - `AGENTS.md` — commit style and docs-maintenance rules.
 
 ## Phase 0 — mechanical baseline (first action)
@@ -40,7 +40,9 @@ Run `{{typecheckCmd}}`, `{{buildCmd}}`, `{{lintCmd}}`, `{{testCmd}}` (skip empti
 6. Commit — only what this plan owns:
    - Determine the plan's own changed files. **Exclude** anything listed in `> Dirty-Path Baseline:`.
    - If a file you would commit overlaps the Dirty-Path Baseline (a pre-existing user change on the same path), do NOT mix it in: leave it uncommitted and record the conflict in your REMAINING output, returning `issues`.
-   - Commit the plan-owned changes using `{{commitFormat}}`. Note `full-green verification` in the message when all relevant commands passed, and record it in `docs/logs/{year}/{month}-{day}.md` per AGENTS.md.
+   - `{{commitFormat}}` is a PATTERN, not literal text. Substitute a real value for every placeholder: `<type>`/`<description>` tokens, ticket stubs (e.g. an `XXXX` or `<...>` segment inside brackets), and module segments (e.g. `[ABO]` → the module this change actually touches). Take the real ticket key from the plan items' ticket sub-fields (whatever ticket annotation the project's plan format uses); if the plan carries no ticket, OMIT the ticket segment entirely — never commit a literal stub. Match the repo's surrounding `git log` tone.
+   - Self-check before committing: the final message must contain zero placeholder residue — no `XXXX`, no `<...>`, no `{...}` template vars. If any remains, fix the message, not just the code.
+   - Commit the plan-owned changes. Note `full-green verification` in the message when all relevant commands passed, and record it in `docs/logs/{year}/{month}-{day}.md` per AGENTS.md.
    - Never bypass hooks (`--no-verify`) or force. If a commit fails, auto-fix the root cause (lint/format/staging) and retry up to 2 times; if still failing, leave the tree intact and return `issues`.
 
 ## Decision

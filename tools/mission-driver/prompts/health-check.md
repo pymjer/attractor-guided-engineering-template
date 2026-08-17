@@ -4,20 +4,29 @@ CHECK is a gate program that ensures the mission starts from a deterministic, kn
 
 > If you need to understand the repository structure, you may read `{{contextDir}}/project-context.md`.
 
-## When {{checkCmd}} is configured (non-empty)
+## Your gate command
 
-1. Run `{{checkCmd}}` in the project root.
-2. If the command succeeds (exit 0) → emit `pass`.
-3. If the command fails:
+The mission's configured check command is shown between the markers below. It may be empty — missions are not required to configure one.
+
+----- gate command begin -----
+{{checkCmd}}
+----- gate command end -----
+
+## Case 1 — a command appears between the markers
+
+Run it verbatim in the project root.
+
+1. It succeeds (exit 0) → emit `pass`.
+2. It fails:
    a. Diagnose the failure and attempt to fix it (e.g. compile errors, missing generated files, stale build artifacts).
-   b. Re-run `{{checkCmd}}` to verify the fix.
+   b. Re-run the same command to verify the fix.
    c. If the re-run succeeds → emit `needs_fix` (the engine retries CHECK with a clean state).
    d. If the fix does not resolve the issue after reasonable effort → emit `fail`.
-4. Do NOT run `commands.test` — that is CLOSURE_VERIFY's job, not CHECK's.
+3. Do NOT run the full test suite — that is CLOSURE_VERIFY's job, not CHECK's.
 
-## When {{checkCmd}} is NOT configured (empty or missing)
+## Case 2 — the space between the markers is empty
 
-Fall back to workspace-integrity detection:
+No check command is configured; fall back to workspace-integrity detection:
 
 1. Run `git status --porcelain` in the project root.
 2. If the command itself fails (not a git repo, git missing) → emit `fail`.
@@ -28,12 +37,12 @@ Fall back to workspace-integrity detection:
 
 ## Philosophy
 
-CHECK ensures "the mission starts from a known-good state", not "is the tree perfectly clean". A dirty tree is a warning, not a blocker. When `{{checkCmd}}` is configured, it provides the authoritative definition of "known-good" — use it.
+CHECK ensures "the mission starts from a known-good state", not "is the tree perfectly clean". A dirty tree is a warning, not a blocker. A configured gate command (Case 1) provides the authoritative definition of "known-good" — when present, it wins over the Case 2 fallback.
 
 Notes:
 - CHECK runs once at mission entry (it is the flow `entry`, no transition returns to it).
 - `needs_fix` triggers a retry of CHECK (up to 2 times); `fail` is terminal.
-- The authoritative build health gate is CLOSURE_VERIFY; CHECK runs `{{checkCmd}}`, not `commands.test`.
+- The authoritative build health gate is CLOSURE_VERIFY; CHECK runs only the gate command above, never the full test suite.
 
 Your output MUST end with exactly one `<AI_STEP_RESULT>` marker (the only parsed marker), as the last line — one of `pass`, `needs_fix`, or `fail`:
 
