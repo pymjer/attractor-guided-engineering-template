@@ -1,7 +1,7 @@
 {
   "name": "plan-execution",
-  "maxTotalSteps": 30,
-  "maxCycleVisits": 6,
+  "maxTotalSteps": 20,
+  "maxCycleVisits": 8,
   "pingPongWindow": 6,
   "entry": "EXECUTE",
 
@@ -18,52 +18,36 @@
       "type": "agent",
       "promptPath": "prompts/execute.md",
       "onUnknownMaxRetries": 2,
+      "timeoutMs": 1800000,
       "transitions": {
-        "pass": { "goto": "CLOSURE_SCRIPT_CHECK" },
-        "fail": { "retry": "EXECUTE", "maxRetries": 3 }
+        "pass": { "goto": "CLOSURE_VERIFY" },
+        "fail": { "retry": "EXECUTE", "maxRetries": 3 },
+        "blocked": { "done": "blocked" }
       },
-      "onMaxRetries": { "goto": "CLOSURE_SCRIPT_CHECK" },
+      "onMaxRetries": { "goto": "CLOSURE_VERIFY" },
       "onError": { "retry": "EXECUTE", "maxRetries": 3 }
     },
 
-    "CLOSURE_SCRIPT_CHECK": {
-      "type": "script",
-      "scriptId": "closure-script-check",
-      "transitions": {
-        "pass": { "goto": "BUILD_VERIFY" },
-        "fail": { "goto": "CLOSURE_AUDIT" }
-      }
-    },
-
-    "CLOSURE_AUDIT": {
+    "CLOSURE_VERIFY": {
       "type": "agent",
-      "promptPath": "prompts/closure-audit.md",
-      "maxRetries": 3,
+      "promptPath": "prompts/closure-verify.md",
+      "maxRetries": 2,
       "onUnknownMaxRetries": 2,
+      "timeoutMs": 1800000,
       "transitions": {
-        "approved": { "goto": "BUILD_VERIFY" },
+        "approved": { "done": "completed" },
+        "blocked": { "done": "blocked" },
         "issues": {
           "retry": "EXECUTE",
-          "maxRetries": 3,
+          "maxRetries": 2,
           "append": {
             "extract": "REMAINING",
-            "template": "\n\n## Closure Audit Feedback\n\nThe plan `{{PLAN_FILE}}` was not properly closed. Re-execute it based on the following feedback:\n\nScript check result: {{SCRIPT_CHECK_RESULT}}\nScript check details: {{SCRIPT_CHECK_DETAILS}}\n\nAudit findings:\n${output}" }
+            "template": "\n\n## Closure Verify Feedback\n\nThe plan `{{PLAN_FILE}}` was independently verified and has real gaps. Go straight to these items; completed phases need no re-exploration:\n\n${output}"
+          }
         }
       },
       "onMaxRetries": { "done": "failed" },
-      "onError": { "retry": "EXECUTE", "maxRetries": 3 }
-    },
-
-    "BUILD_VERIFY": {
-      "type": "agent",
-      "promptPath": "prompts/build-verify.md",
-      "onUnknownMaxRetries": 2,
-      "transitions": {
-        "pass": { "done": "completed" },
-        "fail": { "retry": "EXECUTE", "maxRetries": 3 }
-      },
-      "onMaxRetries": { "done": "failed" },
-      "onError": { "retry": "EXECUTE", "maxRetries": 3 }
+      "onError": { "retry": "CLOSURE_VERIFY", "maxRetries": 2 }
     }
   }
 }

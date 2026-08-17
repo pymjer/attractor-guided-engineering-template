@@ -814,7 +814,13 @@ export class FlowEngine {
     // (so buildErrorTail's L010 tag-absent diagnostic detects the step's CUSTOM
     // tag). 5th arg (modelOverride) left undefined to keep the default model;
     // 6th opts is absent on legacy callers (main.js brief/draft) → defaults {}.
-    const agentOpts = { timeoutMs: stepDef.timeoutMs, resultTag: stepDef.resultTag };
+    // Mission-level `agentTimeoutMs` (delegates.config) is the fallback default
+    // for steps that don't declare their own timeoutMs — an unattended run then
+    // kills a stalled agent session instead of burning wall-clock forever.
+    const agentOpts = {
+      timeoutMs: stepDef.timeoutMs ?? this.delegates?.config?.agentTimeoutMs,
+      resultTag: stepDef.resultTag,
+    };
     const result = await this.delegates.runAgent(stepName, prompt, stepDef.system || "", sessionId, undefined, agentOpts);
     if (result && result.sessionId) this.lastSessionId = result.sessionId;
 
@@ -1019,7 +1025,7 @@ export class FlowEngine {
       text = String(ret);
     }
     // Write script output to a log file so it's visible in the Log Viewer.
-    // Without this, script steps (e.g. CLOSURE_SCRIPT_CHECK) have no log to
+    // Without this, script steps (e.g. a script step) have no log to
     // inspect when they fail — the reason is lost.
     const logFile = this._writeScriptLog(stepName, text, marker);
     return { marker, ok: true, vars, text, logFile };
@@ -1134,9 +1140,25 @@ export class FlowEngine {
       }
 
       const visit = this.visitCounts.get(stepName) || 1;
-      let completed = 0, failed = 0;
+      let completed = 0, failed = 0, blocked = 0;
       const aggregatedVars = {};
       const subflowRuns = [];
+
+      const classifyChild = (status) => {
+        // "blocked" = the child parked its plan (cross-module/out-of-scope
+        // blocker recorded, awaiting human adjudication). It is neither a
+        // success nor a failure: the mission must keep making progress on the
+        // remaining items instead of retry-looping an unfinishable one.
+        if (status === "blocked") {
+          blocked++;
+          return;
+        }
+        if (status === "completed") {
+          completed++;
+          return;
+        }
+        failed++;
+      };
 
       const concurrency = Math.max(1, Number(stepDef.concurrency) || 1);
 
@@ -1158,10 +1180,8 @@ export class FlowEngine {
           subflowRuns.push({ forEachIndex: i, forEachItem: item, file: subflowFile ? basename(subflowFile) : null, status: childResult.status });
           this._wfAppendSubflowRun(stepName, visit, subflowRuns[subflowRuns.length - 1]);
           this._log(`  subflow ${stepName}: forEach item ${i + 1} → ${childResult.status}`);
-          if (childResult.status === "completed") {
-            completed++;
-          } else {
-            failed++;
+          classifyChild(childResult.status);
+          if (childResult.status !== "completed" && childResult.status !== "blocked") {
             if (stepDef.onItemError && stepDef.onItemError.stopOnError) break;
           }
         }
@@ -1189,10 +1209,8 @@ export class FlowEngine {
           subflowRuns.push({ forEachIndex: r.i, forEachItem: r.item, file: r.subflowFile ? basename(r.subflowFile) : null, status: r.childResult.status });
           this._wfAppendSubflowRun(stepName, visit, subflowRuns[subflowRuns.length - 1]);
           this._log(`  subflow ${stepName}: forEach item ${r.i + 1} → ${r.childResult.status}`);
-          if (r.childResult.status === "completed") {
-            completed++;
-          } else {
-            failed++;
+          classifyChild(r.childResult.status);
+          if (r.childResult.status !== "completed" && r.childResult.status !== "blocked") {
             if (stepDef.onItemError && stepDef.onItemError.stopOnError) stopRequested = true;
           }
         };
@@ -1228,10 +1246,17 @@ export class FlowEngine {
       }
 
       let marker;
-      if (failed === 0) marker = "all_complete";
-      else if (completed === 0) marker = "all_failed";
-      else marker = "some_failed";
-      this._log(`  subflow ${stepName}: forEach done (${completed} completed, ${failed} failed) → ${marker}`);
+      if (failed > 0) {
+        marker = completed > 0 ? "some_failed" : "all_failed";
+      } else if (blocked > 0) {
+        // All non-completed items parked themselves with recorded blockers:
+        // honest progress signal, not a failure. Mission continues (EXEC_PLANS
+        // routes some_blocked/all_blocked to DRAFT_PLANS like some_failed).
+        marker = completed > 0 ? "some_blocked" : "all_blocked";
+      } else {
+        marker = "all_complete";
+      }
+      this._log(`  subflow ${stepName}: forEach done (${completed} completed, ${failed} failed, ${blocked} blocked) → ${marker}`);
       return { ok: true, marker, vars: aggregatedVars, text: marker, subflowRuns };
     }
 
@@ -1273,7 +1298,7 @@ export class FlowEngine {
     // to the CHILD engine, not the parent. Without this, the runner reads
     // config.onStepUpdate (bound to the parent engine at main.js:752), which
     // searches the parent's workflow.steps for the stepName — but the
-    // subflow's step names (EXECUTE, BUILD_VERIFY, MULTI_AUDIT, …) aren't in
+    // subflow's step names (EXECUTE, CLOSURE_VERIFY, MULTI_AUDIT, …) aren't in
     // the parent's workflow, so logFile/sessionId updates are silently dropped.
     // Result: the dashboard showed no log button and no session button until
     // the step completed and _wfClose persisted them. The wrapper injects the

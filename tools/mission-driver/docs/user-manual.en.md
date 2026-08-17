@@ -299,7 +299,7 @@ This section explains mission-driver's core loop. **Read this and you'll be able
 
 | Step | Type | What it does | Input | Output markers |
 |------|------|--------------|-------|----------------|
-| **CHECK** | agent | Deterministic-state gate: runs `commands.check` when configured (diagnose + fix + rerun if auto-fixable), else falls back to git conflict-marker detection. Does NOT run `commands.test` (that's BUILD_VERIFY's job). | mission.commands | `pass` / `needs_fix` / `fail` |
+| **CHECK** | agent | Deterministic-state gate: runs `commands.check` when configured (diagnose + fix + rerun if auto-fixable), else falls back to git conflict-marker detection. Does NOT run `commands.test` (that's CLOSURE_VERIFY's job). | mission.commands | `pass` / `needs_fix` / `fail` |
 | **REVIEW_PLANS** | agent (forEach) | Review all `draft`-status plans. | `draftPlans()` | `all_complete` / `some_failed` / `all_failed` |
 | **EXEC_PLANS** | subflow (forEach) | Execute all `active`-status plans. | `activePlans()` | `all_complete` / `some_failed` / `all_failed` |
 | **DRAFT_PLANS** | agent | Draft new plans from the roadmap. | roadmap doc | `created` / `nothing` |
@@ -361,12 +361,10 @@ Some step types are `subflow` — a complete state machine nested inside a step 
 
 **EXEC_PLANS's subflow** (`plan-execution.json`): runs once per active plan:
 ```
-EXECUTE → CLOSURE_SCRIPT_CHECK → CLOSURE_AUDIT → BUILD_VERIFY
+EXECUTE → CLOSURE_VERIFY (issues feed <REMAINING> back to EXECUTE, max 3 rounds)
 ```
-- EXECUTE: the agent modifies code per the plan.
-- CLOSURE_SCRIPT_CHECK: any scripts named in the plan actually run.
-- CLOSURE_AUDIT: audit whether the plan's acceptance criteria are truly met.
-- BUILD_VERIFY: run tests/build to confirm baseline isn't broken.
+- EXECUTE: the agent modifies code per the plan, ticking only Phase items and Exit Criteria (Closure Gates stay unticked).
+- CLOSURE_VERIFY: an independent fresh-session closure verifier — runs the plan-check tool to discriminate drift, spot-checks acceptance criteria against the live repo, then runs typecheck/build/lint/test; on full green it ticks Closure Gates, writes Closure evidence, flips Plan Status, and commits per the Dirty-Path baseline. Real gaps produce a `<REMAINING>` block that routes back to EXECUTE for targeted repair (3-round cap).
 
 **DEEP_AUDIT's subflow** (`deep-audit-loop.json`):
 ```
@@ -389,7 +387,7 @@ CHECK_OPEN_AUDITS → MULTI_AUDIT → OPEN_AUDIT → SCAN_NEW_RESULTS
 
 - **draft**: freshly drafted, not yet reviewed. REVIEW_PLANS dispatches independent sub-agent reviewers; on approval, promotes to active.
 - **active**: reviewed and ready to execute. EXEC_PLANS picks these up.
-- **completed**: EXEC_PLANS finished and CLOSURE_AUDIT passed.
+- **completed**: EXEC_PLANS finished and CLOSURE_VERIFY approved.
 
 ### 5.5 maxAuditRounds: the audit budget
 

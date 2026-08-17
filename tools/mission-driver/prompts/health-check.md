@@ -13,7 +13,7 @@ CHECK is a gate program that ensures the mission starts from a deterministic, kn
    b. Re-run `{{checkCmd}}` to verify the fix.
    c. If the re-run succeeds → emit `needs_fix` (the engine retries CHECK with a clean state).
    d. If the fix does not resolve the issue after reasonable effort → emit `fail`.
-4. Do NOT run `commands.test` — that is BUILD_VERIFY's job, not CHECK's.
+4. Do NOT run `commands.test` — that is CLOSURE_VERIFY's job, not CHECK's.
 
 ## When {{checkCmd}} is NOT configured (empty or missing)
 
@@ -33,7 +33,7 @@ CHECK ensures "the mission starts from a known-good state", not "is the tree per
 Notes:
 - CHECK runs once at mission entry (it is the flow `entry`, no transition returns to it).
 - `needs_fix` triggers a retry of CHECK (up to 2 times); `fail` is terminal.
-- The authoritative build health gate is BUILD_VERIFY; CHECK runs `{{checkCmd}}`, not `commands.test`.
+- The authoritative build health gate is CLOSURE_VERIFY; CHECK runs `{{checkCmd}}`, not `commands.test`.
 
 Your output MUST end with exactly one `<AI_STEP_RESULT>` marker (the only parsed marker), as the last line — one of `pass`, `needs_fix`, or `fail`:
 

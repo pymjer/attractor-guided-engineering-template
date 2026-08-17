@@ -57,5 +57,5 @@ Notes:
 - `flowName` — custom main flow name; omit to use the built-in `mission-driver` flow. When a flow hint was provided via `{{flowHint}}`, use that value verbatim. Custom flows are loaded from `missions/flows/<flowName>.json` first, then the tool's built-in `flows/`
 - `moduleDir` — the target module or project directory for this mission; audit steps focus on this scope (code, config, tests, docs). Use project root for simple single-module projects
 - `prompts.multiAudit` / `prompts.openAudit` — project-specific audit skill prompt files; empty or omitted = skip that audit type
-- `commitFormat` — git commit message format hint for BUILD_VERIFY, e.g. `feat(<scope>): <title>` or `imperative mood; reference plan path in footer`
+- `commitFormat` — git commit message format hint for CLOSURE_VERIFY, e.g. `feat(<scope>): <title>` or `imperative mood; reference plan path in footer`
 - `commands.check` — optional deterministic-state gate for the CHECK step. Set it when the project has a fast command that confirms a clean/deterministic state (e.g. `mvn clean compile` for a Java project). Empty or omitted falls back to git conflict-marker detection. Note: `extends: "base"` is a shallow merge, so if you set any `commands` key you should also set `check` explicitly (otherwise the base `check` default is dropped).

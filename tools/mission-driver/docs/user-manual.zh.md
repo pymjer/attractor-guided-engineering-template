@@ -505,7 +505,7 @@ flag：`--target-file <path>`（可选输入辅助——指向目标文件/目�
 
 | Step | 类型 | 干什么 | 输入 | 输出 marker |
 |------|------|--------|------|-------------|
-| **CHECK** | agent | 确定性状态门：配置了 `commands.check` 就跑它（可自动修复则诊断 + 修复 + 重跑），没配置则回退 git 冲突标记检测。**不**跑 `commands.test`（那是 BUILD_VERIFY 的职责）。 | mission.commands | `pass` / `needs_fix` / `fail` |
+| **CHECK** | agent | 确定性状态门：配置了 `commands.check` 就跑它（可自动修复则诊断 + 修复 + 重跑），没配置则回退 git 冲突标记检测。**不**跑 `commands.test`（那是 CLOSURE_VERIFY 的职责）。 | mission.commands | `pass` / `needs_fix` / `fail` |
 | **REVIEW_PLANS** | agent (forEach) | 评审所有 `draft` 状态的 plan | `draftPlans()` | `all_complete` / `some_failed` / `all_failed` |
 | **EXEC_PLANS** | subflow (forEach) | 执行所有 `active` 状态的 plan | `activePlans()` | `all_complete` / `some_failed` / `all_failed` |
 | **DRAFT_PLANS** | agent | 从 roadmap 起草新 plan | roadmap 文档 | `created` / `nothing` |
@@ -567,12 +567,11 @@ flag：`--target-file <path>`（可选输入辅助——指向目标文件/目�
 
 **EXEC_PLANS 的 subflow**（`plan-execution.json`）：对每个 active plan 跑一遍：
 ```
-EXECUTE → CLOSURE_SCRIPT_CHECK → CLOSURE_AUDIT → BUILD_VERIFY
+EXECUTE → CLOSURE_VERIFY（issues 时带 <REMAINING> 反馈回 EXECUTE，最多 3 轮）
 ```
-- EXECUTE：让 agent 按 plan 内容改代码
-- CLOSURE_SCRIPT_CHECK：检查 plan 里规定的脚本是否能跑
-- CLOSURE_AUDIT：审计 plan 是否真的完成（验收标准是否满足）
-- BUILD_VERIFY：跑测试/构建确认没破坏 baseline
+- EXECUTE：让 agent 按 plan 内容改代码，只勾 Phase 项与 Exit Criteria（Closure Gates 留白）
+- CLOSURE_VERIFY：独立新会话闭包验证员——先跑 plan-check 工具鉴别 drift、语义 spot-check 验收标准、再跑 typecheck/build/lint/test 命令，全绿后勾 Closure Gates、写 Closure 证据、翻转 Plan Status、按 Dirty-Path 基线 commit；发现真缺口输出 `<REMAINING>` 打回 EXECUTE 定向修复，最多 3 轮
+- blocked（停靠）：任一步发现剩余工作被范围外问题阻塞（跨模块平台缺陷/共享契约/无法从本仓库配置的环境/需人工授权）时，在 plan 内记录阻塞证据与解锁条件，把 `> Plan Status` 置为 `blocked` 并 emit `blocked`——引擎停靠该 plan（下轮 `activePlans()` 不再拾取），mission 继续其他计划；人工解决后翻回 `active`。每个 agent 步有 wall-clock 看门狗（step `timeoutMs`，默认 30 分钟无日志输出击杀进程树；mission 级 `agentTimeoutMs` 兜底），僵死会话不再无限占用运行时间。
 
 **DEEP_AUDIT 的 subflow**（`deep-audit-loop.json`）：
 ```
@@ -595,7 +594,7 @@ CHECK_OPEN_AUDITS → MULTI_AUDIT → OPEN_AUDIT → SCAN_NEW_RESULTS
 
 - **draft**：刚起草、还没评审。REVIEW_PLANS 会派 sub-agent 独立评审，通过后推到 active。
 - **active**：评审通过、可以执行。EXEC_PLANS 拿来跑。
-- **completed**：EXEC_PLANS 跑完且 CLOSURE_AUDIT 通过。
+- **completed**：EXEC_PLANS 跑完且 CLOSURE_VERIFY approved。
 
 ### 5.5 maxAuditRounds：审计配额
 

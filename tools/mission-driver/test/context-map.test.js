@@ -90,12 +90,13 @@ describe("context-map — buildInjectionMap(mission-driver)", () => {
 
 describe("context-map — listPrompts", () => {
   const { prompts } = listPrompts(TOOL_ROOT);
-  it("returns the prompt library (≥12 prompts, includes execute)", () => {
+  it("returns the prompt library (≥11 prompts, includes execute and closure-verify)", () => {
 
-    assert.ok(prompts.length >= 12, `expected ≥12 prompts, got ${prompts.length}`);
+    assert.ok(prompts.length >= 11, `expected ≥11 prompts, got ${prompts.length}`);
     const execute = prompts.find((p) => p.name === "execute");
     assert.ok(execute, "execute prompt present");
     assert.ok(execute.summary.length > 0, "execute has a summary");
+    assert.ok(prompts.find((p) => p.name === "closure-verify"), "closure-verify prompt present");
   });
 
   it("execute prompt usedBy includes plan-execution flow EXECUTE step", () => {
@@ -163,12 +164,12 @@ describe("context-map — buildInjectionMap subflow recursion (fix #1)", () => {
     assert.ok(nested, "nested deep-audit-loop/MULTI_AUDIT visible");
   });
 
-  it("nested substeps keep prompt vars (closure-audit surfaces PLAN_FILE)", () => {
+  it("nested substeps keep prompt vars (closure-verify surfaces PLAN_FILE)", () => {
     const exec = map.steps.find((s) => s.name === "EXEC_PLANS");
-    const closure = exec.substeps.find((s) => s.name === "CLOSURE_AUDIT");
-    assert.ok(closure, "nested CLOSURE_AUDIT visible");
+    const closure = exec.substeps.find((s) => s.name === "CLOSURE_VERIFY");
+    assert.ok(closure, "nested CLOSURE_VERIFY visible");
     const varNames = closure.promptVars.map((v) => v.name);
-    assert.ok(varNames.includes("PLAN_FILE"), `nested CLOSURE_AUDIT vars: ${varNames.join(",")}`);
+    assert.ok(varNames.includes("PLAN_FILE"), `nested CLOSURE_VERIFY vars: ${varNames.join(",")}`);
   });
 
   it("non-subflow steps do not carry subflowName/substeps", () => {

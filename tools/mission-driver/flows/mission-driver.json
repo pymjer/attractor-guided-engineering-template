@@ -52,7 +52,9 @@
       "transitions": {
         "all_complete": { "goto": "DRAFT_PLANS" },
         "some_failed": { "goto": "DRAFT_PLANS" },
-        "all_failed": { "goto": "DRAFT_PLANS" }
+        "all_failed": { "goto": "DRAFT_PLANS" },
+        "some_blocked": { "goto": "DRAFT_PLANS" },
+        "all_blocked": { "goto": "DRAFT_PLANS" }
       },
       "onError": { "goto": "DRAFT_PLANS" }
     },

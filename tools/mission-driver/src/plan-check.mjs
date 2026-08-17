@@ -30,6 +30,10 @@ import { pathToFileURL } from "node:url";
 export const PLAN_STATUS_RE = /^>\s*(?:\*\*)?(?:Plan\s+)?Status(?:\*\*)?:\s*\*{0,2}([A-Za-z][A-Za-z /-]*)\*{0,2}\s*$/im;
 const CHECKLIST_UNCHECKED_RE = /^(\s*)-\s+\[\s?\]\s+(.+)$/gm;
 const CHECKLIST_CHECKED_RE = /^(\s*)-\s+\[x\]\s+(.+)$/gim;
+// The "## Closure Gates" heading splits executor-owned phase items (before)
+// from verifier-owned gate items (after). Executor contract: phases all [x],
+// gates left [ ]; the independent verifier owns gate ticks.
+const CLOSURE_GATES_HEADER_RE = /^#{2,4}\s+Closure Gates\s*$/im;
 // Match the real "## Closure" section, NOT "## Closure Gates". `\b` alone
 // would also match "Closure Gates" (word boundary before the space), and since
 // the plan template always places "## Closure Gates" before "## Closure",
@@ -83,6 +87,20 @@ function analyzePlan(filePath, projectRoot) {
   const totalChecked = (content.match(CHECKLIST_CHECKED_RE) || []).length;
   const allUnchecked = totalChecked === 0 && totalUnchecked > 0;
 
+  // Phase/gate split: unchecked items before "## Closure Gates" belong to the
+  // executor (phase items + exit criteria); items from that heading onward
+  // belong to the independent closure verifier. No gates heading → everything
+  // is phase-scoped (backward compatible with gate-less plans).
+  const gatesHeaderMatch = content.match(CLOSURE_GATES_HEADER_RE);
+  const gatesStart = gatesHeaderMatch
+    ? content.indexOf(gatesHeaderMatch[0])
+    : content.length;
+  const beforeGates = gatesStart === content.length ? content : content.slice(0, gatesStart);
+  const fromGates = gatesStart === content.length ? "" : content.slice(gatesStart);
+  const phaseUnchecked = (beforeGates.match(CHECKLIST_UNCHECKED_RE) || []).length;
+  const gatesUnchecked = totalUnchecked - phaseUnchecked;
+  const phaseChecked = (beforeGates.match(CHECKLIST_CHECKED_RE) || []).length;
+
   return {
     file: relPath,
     planStatus,
@@ -90,6 +108,9 @@ function analyzePlan(filePath, projectRoot) {
     totalChecked,
     totalUnchecked,
     allUnchecked,
+    phaseChecked,
+    phaseUnchecked,
+    gatesUnchecked,
     hasClosureSection,
     hasClosureEvidence,
     closureEvidenceCount,
@@ -134,6 +155,10 @@ export function inspectPlan(filePath, options = {}) {
     planStatus: result.planStatus,
     totalChecked: result.totalChecked,
     totalUnchecked: result.totalUnchecked,
+    phaseChecked: result.phaseChecked,
+    phaseUnchecked: result.phaseUnchecked,
+    gatesUnchecked: result.gatesUnchecked,
+    executorHandoffOk: result.phaseUnchecked === 0 && result.gatesUnchecked > 0,
     details,
     allUnchecked: result.allUnchecked,
   };
@@ -153,6 +178,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(2);
   }
   const res = inspectPlan(file, { strict });
-  console.log(JSON.stringify(res, null, 2));
+  const summary = [
+    `plan: ${res.file} | status: ${res.planStatus}`,
+    `phase items: ${res.phaseChecked} checked, ${res.phaseUnchecked} unchecked (executor owns these — must be 0 after EXECUTE)`,
+    `closure gates: ${res.gatesUnchecked} unchecked (verifier owns these — unticked is expected before CLOSURE_VERIFY)`,
+    `executor handoff ok: ${res.executorHandoffOk}`,
+    ...(res.details.length ? [`issues: ${res.details.join("; ")}`] : []),
+  ].join("\n");
+  console.log(JSON.stringify({ ...res, summary }, null, 2));
   process.exit(res.passed ? 0 : 1);
 }
