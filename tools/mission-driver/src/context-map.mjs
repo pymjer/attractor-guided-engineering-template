@@ -50,7 +50,7 @@ export const VAR_PROVENANCE = {
   planGuide:          { source: "mission.planGuide (fallback: plansDir + 00-plan-…guide.md)", runtime: false },
   auditsDir:          { source: "mission.auditsDir (fallback: 'audits')", runtime: false },
   contextDir:         { source: "mission.contextDir (fallback: '')", runtime: false },
-  moduleContextFile:  { source: "{moduleDir}/CONTEXT.md probe — '(不存在)' suffix when absent", runtime: false },
+  moduleContextFile:  { source: "{moduleDir}/CONTEXT.md probe — empty string when absent", runtime: false },
   moduleDir:          { source: "mission.moduleDir (fallback: '')", runtime: false },
   testCmd:            { source: "mission.commands.test", runtime: false },
   buildCmd:           { source: "mission.commands.build (fallback: '')", runtime: false },

@@ -19,3 +19,5 @@ report/
 .pi-subagents/
 nul
 .env
+
+.kiro/

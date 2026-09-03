@@ -18,7 +18,7 @@
           <span class="tl-title" @click.stop="onSelect(step, `p${idx}`, logFileArg(step))">
             {{ step.name }}
           </span>
-          <span v-if="step.durationMs != null" class="tl-duration">{{ fmtDuration(step.durationMs) }}</span>
+          <span v-if="step.durationMs != null || step.status === 'running'" class="tl-duration">{{ fmtDuration(step.durationMs) || liveElapsed(step) }}</span>
           <n-tag
             v-if="step.marker"
             :type="markerTagType(step.marker)"
@@ -130,7 +130,7 @@
                     >
                       {{ cs.name }}
                     </span>
-                    <span v-if="cs.durationMs != null" class="tl-duration">{{ fmtDuration(cs.durationMs) }}</span>
+                    <span v-if="cs.durationMs != null || cs.status === 'running'" class="tl-duration">{{ fmtDuration(cs.durationMs) || liveElapsed(cs) }}</span>
                     <n-tag
                       v-if="cs.marker"
                       :type="markerTagType(cs.marker)"
@@ -183,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onScopeDispose } from 'vue'
 import { NButton, NEmpty, NIcon, NTag, NTimeline, NTimelineItem, useMessage } from 'naive-ui'
 import { CopyOutline, DocumentTextOutline, ChevronDownOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import type { Step, StepStatus } from '@/types/run'
@@ -212,6 +212,21 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
+
+// ── Live elapsed time for running steps ──────────────────────────────────
+// A single shared timer ticks `now` once per second. Any step with
+// status='running' and a valid startedAt shows computed elapsed duration.
+const now = ref(Date.now())
+const clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
+onScopeDispose(() => { clearInterval(clockTimer) })
+
+function liveElapsed(step: { status?: string; startedAt?: string }): string {
+  if (step.status !== 'running' || !step.startedAt) return ''
+  const start = Date.parse(step.startedAt)
+  if (Number.isNaN(start)) return ''
+  const ms = Math.max(0, now.value - start)
+  return fmtDuration(ms)
+}
 
 // status → Naive UI timeline type (FSD §4.4 icon mapping).
 function timelineType(

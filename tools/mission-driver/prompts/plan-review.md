@@ -5,7 +5,7 @@ Review the drafted plan at `{{forEachItem}}` — read it **completely**.
 For review you need to know the project's conventions and the target module's architecture:
 
 - `{{contextDir}}/project-context.md` — project-wide conventions and module map.
-- `{{moduleContextFile}}` — the target module's own CONTEXT.md. If the path ends with "(不存在)", skip it.
+- `{{moduleContextFile}}` — the target module's own CONTEXT.md (architecture, conventions, key files). If empty, the module has no dedicated context file — skip it.
 
 Read `{{planGuide}}` **completely**. It defines the plan format, required sections, checklist, and closure evidence rules.
 

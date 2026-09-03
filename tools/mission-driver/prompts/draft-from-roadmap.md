@@ -7,7 +7,7 @@ Pick the next 1-3 roadmap items worth planning now and write ONE plan per item. 
 ## Facts / where to read
 
 - `{{contextDir}}/project-context.md` — project conventions, build commands, module map.
-- `{{moduleContextFile}}` — target module CONTEXT.md (architecture, key files). If the path ends with "(不存在)", the module has no dedicated context file — skip it.
+- `{{moduleContextFile}}` — target module CONTEXT.md (architecture, key files). If empty, the module has no dedicated context file — skip it.
 - `{{roadmapPath}}` — the roadmap; remaining items and any deferred items from previous plans are the drafting source.
 - `{{planGuide}}` — plan format, status lifecycle, review rules. Read it before writing.
 

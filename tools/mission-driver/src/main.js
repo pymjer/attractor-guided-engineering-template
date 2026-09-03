@@ -691,7 +691,7 @@ async function cmdRunMission(mission, opts) {
         contextDir: g.contextDir || "",
         moduleContextFile: (() => {
           const p = resolve(config.projectRoot, g.moduleDir || "", "CONTEXT.md");
-          return existsSync(p) ? p : `${p} (不存在)`;
+          return existsSync(p) ? p : "";
         })(),
         moduleDir: g.moduleDir || "",
         testCmd: g.commands.test,
