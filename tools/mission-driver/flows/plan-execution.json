@@ -22,7 +22,14 @@
       "transitions": {
         "pass": { "goto": "CLOSURE_VERIFY" },
         "fail": { "retry": "EXECUTE", "maxRetries": 3 },
-        "blocked": { "done": "blocked" }
+        "blocked": {
+          "retry": "EXECUTE",
+          "maxRetries": 1,
+          "append": {
+            "extract": "BLOCKED",
+            "template": "\n\n## Blocked Challenge\n\nYou requested blocked. Parking requires ALL of: (1) a ## Blocked Attempts ledger with >=3 recorded failed attempts spanning >2 hours cumulative execution; (2) NOT a permission/ownership dispute — commit scope, cross-plan artifact ownership, and earlier-plan lifecycle are decided by CLOSURE_VERIFY or by amending the earlier plan (explicitly allowed), never by parking; (3) genuinely unsolvable from this repo (missing environment, external system, explicit human-authorization gate). If the bar is not met: emit pass to hand ownership decisions to CLOSURE_VERIFY, amend the earlier plan, or keep working. Re-emit blocked ONLY if the bar is truly met.\n\n${output}"
+          }
+        }
       },
       "onMaxRetries": { "goto": "CLOSURE_VERIFY" },
       "onError": { "retry": "EXECUTE", "maxRetries": 3 }
